@@ -1,6 +1,4 @@
 
-#![allow(dead_code)]
-#![allow(unused_imports)]
 
 #[macro_export] macro_rules! syscall {
 
@@ -32,7 +30,7 @@
 		{
 			let value: libc::c_long;
 
-			std::arch::asm!(
+			core::arch::asm!(
 				"syscall",
 				
 				in("rax") $number,
