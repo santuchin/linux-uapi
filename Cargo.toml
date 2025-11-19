@@ -1,6 +1,6 @@
 
 [package]
-name = "linux-syscalls"
+name = "linux-uapi"
 version = "0.1.0"
 authors = ["Santuchin <santuccini@proton.me>"]
 edition = "2024"
