@@ -6,6 +6,8 @@
 ]
 compile_error!("linux-syscalls doesn't support your target architecture");
 
+pub mod syscall;
+
 pub mod x86_64;
 // pub mod aarch64;
 

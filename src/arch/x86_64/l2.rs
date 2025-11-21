@@ -14,70 +14,46 @@ use crate::result::Result;
 
 use libc::{
 
-	c_void,
-
-	
-	c_char,
-	c_schar,
-	c_uchar,
-
-	c_short,
-	c_ushort,
-
-	c_int,
-	c_uint,
-
-	c_long,
-	c_ulong,
-
-	c_longlong,
-	c_ulonglong,
-
-
-	c_float,
-
-	c_double,
-
-	
-	size_t,
-	ssize_t,
-
-
-	mode_t,
+	c_char, c_double, c_float, c_int, c_long, c_longlong, c_schar, c_short, c_uchar, c_uint, c_ulong, c_ulonglong, c_ushort, c_void, mode_t, size_t, socklen_t, ssize_t
 };
 
 
 
-
+/*
+SAFE SYSCALLS
+*/
 
 pub fn pause() -> Result {
-	unsafe { syscall!(Sys::Pause) }
+	unsafe { syscall!(Sys::Pause) }.into()
 }
 
 pub fn scheduler_yield() -> Result {
-	unsafe { syscall!(Sys::SchedulerYield) }
+	unsafe { syscall!(Sys::SchedulerYield) }.into()
 }
 
 pub fn get_process_id() -> Result {
-	unsafe { syscall!(Sys::GetProcessId) }
+	unsafe { syscall!(Sys::GetProcessId) }.into()
 }
 
 pub fn get_parent_process_id() -> Result {
-	unsafe { syscall!(Sys::GetParentProcessId) }
+	unsafe { syscall!(Sys::GetParentProcessId) }.into()
 }
 
 pub fn get_group_id() -> Result {
-	unsafe { syscall!(Sys::GetGroupId) }
+	unsafe { syscall!(Sys::GetGroupId) }.into()
 }
 
 pub fn get_user_id() -> Result {
-	unsafe { syscall!(Sys::GetUserId) }
+	unsafe { syscall!(Sys::GetUserId) }.into()
 }
 
 pub fn get_thread_id() -> Result {
-	unsafe { syscall!(Sys::GetThreadId) }
+	unsafe { syscall!(Sys::GetThreadId) }.into()
 }
 
+/*
+UNSAFE SYSCALLS
+*/
 
 pub unsafe fn read<T>(
 	file_desc: RawFd,
@@ -91,39 +67,73 @@ pub unsafe fn read<T>(
 			buffer,
 			size,
 		)
-	}
+	}.into()
 }
 
 
-pub fn accept(
+pub unsafe fn accept(
 	file_desc: RawFd,
 	address: *mut libc::sockaddr,
-	address_length: *mut size_t,
+	address_length: *mut socklen_t,
 ) -> Result {
-	unsafe {
-		syscall!(
-			Sys::Accept,
-			file_desc,
-			address,
-			address_length,
-		)
-	}
+	syscall!(
+		Sys::Accept,
+		file_desc,
+		address,
+		address_length,
+	).into()
 }
 
+pub unsafe fn accept4(
+	file_desc: RawFd,
+	address: *mut libc::sockaddr,
+	address_length: *mut libc::socklen_t,
+	flags: c_int,
+) -> Result {
+	syscall!(
+		Sys::Accept4,
+		file_desc,
+		address,
+		address_length,
+		flags,
+	).into()
+}
+
+pub unsafe fn bind(
+	file_desc: RawFd,
+	address: *const libc::sockaddr,
+	address_length: libc::socklen_t,
+) -> Result {
+	syscall!(
+		Sys::Bind,
+		file_desc,
+		address,
+		address_length,
+	).into()
+}
+
+pub unsafe fn listen(
+	file_desc: RawFd,
+	backlog: c_int,
+) -> Result {
+	syscall!(
+		Sys::Listen,
+		file_desc,
+		backlog,
+	).into()
+}
 
 pub unsafe fn socket(
-	domain: c_int,
+	family: c_int,
 	semantics: c_int,
 	protocol: c_int,
 ) -> Result {
-	unsafe {
-		syscall!(
-			Sys::Socket,
-			domain,
-			semantics,
-			protocol
-		)
-	}
+	syscall!(
+		Sys::Socket,
+		family,
+		semantics,
+		protocol
+	).into()
 }
 
 pub unsafe fn write<T>(
@@ -131,24 +141,38 @@ pub unsafe fn write<T>(
 	data: *const T,
 	length: size_t,
 ) -> Result {
-	unsafe {
-		syscall!(
-			Sys::Write,
-			file_desc,
-			data,
-			length,
-		)
-	}
+	syscall!(
+		Sys::Write,
+		file_desc,
+		data,
+		length,
+	).into()
 }
 
 pub unsafe fn close(file_desc: c_int) -> Result {
-	unsafe { syscall!(Sys::Close, file_desc) }
+	syscall!(Sys::Close, file_desc).into()
 }
 
 
+pub unsafe fn set_socket_option<T>(
+	file_desc: c_int,
+	level: c_int,
+	option: c_int,
+	value: *const T,
+	option_length: usize,
+) -> Result {
+	syscall!(
+		Sys::SetSocketOption,
+		file_desc,
+		level,
+		option,
+		value,
+		option_length,
+	).into()
+}
 
 pub unsafe fn exit(status: c_int) -> Result {
-	unsafe { syscall!(Sys::Exit, status) }
+	syscall!(Sys::Exit, status).into()
 }
 
 pub unsafe fn long_seek(
@@ -156,13 +180,11 @@ pub unsafe fn long_seek(
 	offset: libc::off_t,
 	whence: c_uint,
 ) -> Result {
-	unsafe {
-		syscall!(
-			Sys::LongSeek,
-			offset,
-			whence,
-		)
-	}
+	syscall!(
+		Sys::LongSeek,
+		offset,
+		whence,
+	).into()
 }
 
 pub unsafe fn open(
@@ -170,14 +192,12 @@ pub unsafe fn open(
 	flags: c_int,
 	mode: mode_t,
 ) -> Result {
-	unsafe {
-		syscall!(
-			Sys::Open,
-			filename,
-			flags,
-			mode,
-		)
-	}
+	syscall!(
+		Sys::Open,
+		filename,
+		flags,
+		mode,
+	).into()
 }
 
 pub unsafe fn openat(
@@ -192,7 +212,7 @@ pub unsafe fn openat(
 		filename,
 		flags,
 		mode,
-	)
+	).into()
 }
 
 pub unsafe fn openat2(
@@ -207,6 +227,6 @@ pub unsafe fn openat2(
 		filename,
 		open_how,
 		size,
-	)
+	).into()
 }
 

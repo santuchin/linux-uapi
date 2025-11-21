@@ -1,6 +1,7 @@
 
 pub use std::ffi::CStr;
 use std::ffi::c_int;
+use std::ops::Add;
 
 use crate::l2::{self, open};
 use crate::result::Error;
@@ -27,8 +28,45 @@ pub fn exit(status: u8) -> ! {
 }
 
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
+
+
+use core::task::{
+	Poll,
+	Context,
+};
+
+use core::pin::Pin;
+
+pub struct WouldBlock<F>(pub F);
+
+impl<F, T> Future for WouldBlock<F>
+where
+	F: FnMut() -> Result<T, Error>,
+{
+	type Output = Result<T, Error>;
+
+	fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = unsafe { self.get_unchecked_mut() };
+		match (this.0)() {
+			Err(Error::Again) => Poll::Pending,
+			other => Poll::Ready(other),
+		}
+	}
+}
+
+#[macro_export] macro_rules! would_block {
+    ($expr:expr) => {
+		{
+			$crate::l3::WouldBlock(|| { $expr })
+		}
+    };
+}
+
+
+
+
+
+#[derive(Debug, Clone)]
 pub struct FileDesc {
 	pub raw: l2::RawFd,
 }
@@ -99,37 +137,197 @@ impl FileDesc {
 	}
 
 	pub fn socket(
-		domain: AddressFamily,
-		semantics: ProtocolSemantic,
+		family: AddressFamily,
+		semantic: ProtocolSemantic,
 		protocol: c_int,
 	) -> Result<Self, Error> {
 		unsafe {
 			l2::socket(
-				domain as _,
-				semantics as _,
+				family as _,
+				semantic as _,
 				protocol,
 			).catch()
 		}.map(|value| Self { raw: value as _ })
 	}
 
-	
+	pub fn set_socket_option<T>(
+		&self,
+		level: c_int,
+		option: c_int,
+		value: &T,
+	) -> Result<c_int, Error> {
+		unsafe {
+			l2::set_socket_option(
+				self.raw,
+				level,
+				option,
+				value,
+				core::mem::size_of_val(&value),
+			).catch()
+		}.map(|value| value as c_int)
+	}
+
+	pub fn listen(&self, backlog: u32) -> Result<(), Error> {
+		unsafe {
+			l2::listen(
+				self.raw,
+				backlog as _,
+			).catch()
+		}.map(|_| ())
+	}
+
+	pub fn bind<T>(&self, address: &T) -> Result<(), Error> {
+		unsafe {
+			l2::bind(
+				self.raw,
+				address as *const _ as _,
+				core::mem::size_of::<T>() as _,
+			).catch()
+		}.map(|_| ())
+	}
+
 	pub fn accept(
 		&self,
-	) -> Result<(Self, libc::sockaddr), Error> {
+		non_block: bool,
+		close_on_exec: bool,
+	) -> Result<Self, Error> {
 
-		let mut endpoint = libc::sockaddr {
-			sa_family: AddressFamily::IPV6 as _,
-			sa_data: [0; 14],
-		};
-		let mut length = core::mem::size_of_val(&endpoint);
+		let mut flags = 0;
+		
+		if non_block {
+			flags |= libc::SOCK_NONBLOCK;
+		}
+
+		if close_on_exec {
+			flags |= libc::SOCK_CLOEXEC;
+		}
 
 		unsafe {
-			l2::accept(
+			l2::accept4(
 				self.raw,
-				&mut endpoint,
-				&mut length,
+				core::ptr::null_mut(),
+				core::ptr::null_mut(),
+				0,
 			).catch()
-		}.map(|value| (Self { raw: value as _}, endpoint))
+		}.map(|value| Self { raw: value as _ })
+	}
+
+	pub fn accept_with_address(
+		&self,
+		non_block: bool,
+		close_on_exec: bool,
+	) -> Result<(Self, libc::sockaddr_storage), Error> {
+
+		let mut endpoint = core::mem::MaybeUninit::<libc::sockaddr_storage>::uninit();
+		let mut length = core::mem::size_of_val(&endpoint);
+
+		let mut flags = 0;
+		
+		if non_block {
+			flags |= libc::SOCK_NONBLOCK;
+		}
+
+		if close_on_exec {
+			flags |= libc::SOCK_CLOEXEC;
+		}
+
+		unsafe {
+			l2::accept4(
+				self.raw,
+				&mut endpoint as *mut _ as _,
+				&mut length as *mut _ as _,
+				flags,
+			).catch()
+		}.map(|value|
+			(
+				Self { raw: value as _},
+				unsafe { endpoint.assume_init() }
+			)
+		)
+	}
+
+
+
+	pub fn accept_with_address_paranoid(
+		&self,
+		non_block: bool,
+		close_on_exec: bool,
+	) -> Result<(Self, Result<libc::sockaddr_storage, ()>), Error> {
+
+		let mut endpoint = core::mem::MaybeUninit::<libc::sockaddr_storage>::uninit();
+		let mut length = core::mem::size_of_val(&endpoint);
+
+		let mut flags = 0;
+		
+		if non_block {
+			flags |= libc::SOCK_NONBLOCK;
+		}
+
+		if close_on_exec {
+			flags |= libc::SOCK_CLOEXEC;
+		}
+
+		unsafe {
+			l2::accept4(
+				self.raw,
+				&mut endpoint as *mut _ as _,
+				&mut length as *mut _ as _,
+				flags,
+			).catch()
+		}.map(|value|
+			(
+				Self { raw: value as _},
+				if length < core::mem::size_of::<libc::sa_family_t>() {
+					Err(())
+				} else {
+					Ok(unsafe { endpoint.assume_init() })
+				},
+			)
+		)
+	}
+
+	pub fn close(self) -> Result<(), Error> {
+		unsafe {
+			l2::close(self.raw).catch()
+		}.map(|_| ())
+	}
+	
+
+	pub fn setup_socket_test(address: u128, port: u16, backlog: u32) -> Result<FileDesc, Error> {
+
+		let socket = FileDesc::socket(
+			AddressFamily::IPV6,
+			ProtocolSemantic::Stream,
+			0
+		)?;
+
+		socket.set_socket_option(
+			libc::SOL_SOCKET,
+			libc::SO_REUSEADDR,
+			&(true as c_int),
+		)?;
+
+		let address = libc::sockaddr_in6 {
+			sin6_family: libc::AF_INET6 as _,
+			sin6_addr: libc::in6_addr { s6_addr: address.to_ne_bytes() },
+			sin6_port: port.to_be(),
+			sin6_flowinfo: 0,
+			sin6_scope_id: 0,
+		};
+
+		socket.bind(&address)?;
+
+		socket.listen(backlog)?;
+
+		Ok(socket)
+	}
+}
+
+impl Drop for FileDesc {
+	fn drop(&mut self) {
+		unsafe {
+			l2::close(self.raw)
+		};
 	}
 }
 

@@ -8,3 +8,5 @@ const _: () = assert!(std::mem::size_of::<usize>() == std::mem::size_of::<libc::
 #[cfg(not(target_os = "linux"))] compile_error!("linux-syscalls only supports Linux");
 
 pub use arch::current::*;
+
+mod define_syscall;

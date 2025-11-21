@@ -2,19 +2,6 @@
 
 #[macro_export] macro_rules! syscall {
 
-	/*
-	
-	rax
-	
-	rdi
-	rsi
-	rdx
-	r10
-	r8
-	r9
-
-	*/
-
 	(
 		$number:expr
 		
@@ -49,11 +36,10 @@
 				lateout("rcx") _,
 				lateout("r11") _,
 
-				clobber_abi("sysv64"),
 				options(nostack),
 			);
 
-			$crate::result::Result { value }
+			value
 		}
 	}
 }

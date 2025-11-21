@@ -110,9 +110,47 @@ pub enum Seek {
 pub enum AddressFamily {
 	IPV4 = 2,
 	IPV6 = 10,
+	Packet = 17,
 }
 
 pub enum ProtocolSemantic {
-	TCP = 1,
-	UDP = 2,
+	Stream = 1,
+	Datagram = 2,
+	Raw = 3,
+	ReliableDatagram = 4,
+	SequencedPacket = 5,
+	DatagramCongestionControlProtocol = 6,
+	Packet = 10,
 }
+
+
+#[repr(C)]
+pub struct SocketAddressIPV6 {
+	pub port: u16, // big-endian
+	pub flowinfo: u32, // big-endian
+	pub address: [u8; 16],
+	pub scope_id: u32,
+}
+
+pub enum SocketAddress {
+	//IPV4(SocketAddressIPV4),
+	IPV6(SocketAddressIPV6),
+	//Unix(SocketAddressUnix),
+	//Packet(SocketAddressPacket),
+}
+
+/*
+SOCK_STREAM → conexión orientada a flujo (TCP)
+
+SOCK_DGRAM → datagramas sin conexión (UDP)
+
+SOCK_RAW → acceso directo a IP
+
+SOCK_RDM → Reliable Datagram, raramente usado
+
+SOCK_SEQPACKET → paquete secuenciado y fiable
+
+SOCK_DCCP → Datagram Congestion Control Protocol
+
+SOCK_PACKET
+*/

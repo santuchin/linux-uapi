@@ -19,14 +19,21 @@ pub struct Result {
 
 impl Result {
 
-	pub unsafe fn catch(self) -> core::result::Result<c_long, Error> {
+	pub fn catch(self) -> core::result::Result<c_long, Error> {
 
 		match self.value {
-			-0xfff..0 => Err(std::mem::transmute((-(self.value as i16)) as u16)),
+			-0xfff..0 => Err(unsafe { std::mem::transmute((-(self.value as i16)) as u16) }),
 			_ => Ok(self.value),
 		}
 	}
 
+}
+
+impl From<c_long> for Result {
+
+    fn from(value: c_long) -> Self {
+    	Self { value }
+    }
 }
 
 #[repr(u16)]

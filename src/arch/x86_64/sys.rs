@@ -57,6 +57,7 @@ pub enum Sys {
 	GetGroupId = 104,
 	GetParentProcessId = 110,
 	OpenAt = 257,
+	Accept4 = 288,
 	IoUringSetup = 425,
 	IoUringEnter = 426,
 	IoUringRegister = 427,
