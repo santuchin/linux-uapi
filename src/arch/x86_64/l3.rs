@@ -1,12 +1,15 @@
 
 pub use std::ffi::CStr;
-use std::ffi::c_int;
+use std::ffi::{c_int, c_void};
 use std::ops::Add;
+
+use libc::{PROT_READ, socklen_t};
 
 use crate::l2::{self, open};
 use crate::result::Error;
 pub use crate::types::*;
 
+pub type Result<T> = core::result::Result<T, Error>;
 
 pub fn pause() -> () {
 	l2::pause();
@@ -41,9 +44,9 @@ pub struct WouldBlock<F>(pub F);
 
 impl<F, T> Future for WouldBlock<F>
 where
-	F: FnMut() -> Result<T, Error>,
+	F: FnMut() -> Result<T>,
 {
-	type Output = Result<T, Error>;
+	type Output = Result<T>;
 
 	fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
 		let this = unsafe { self.get_unchecked_mut() };
@@ -77,7 +80,7 @@ impl FileDesc {
 		dir_file_desc: FileDesc,
 		filename: &CStr,
 		open_how: OpenHow,
-	) -> Result<Self, Error> {
+	) -> Result<Self> {
 		unsafe {
 			l2::openat2(
 				dir_file_desc.raw,
@@ -92,7 +95,7 @@ impl FileDesc {
 		&self,
 		offset: isize,
 		whence: Seek,
-	) -> Result<isize, Error> {
+	) -> Result<isize> {
 		unsafe {
 			l2::long_seek(
 				self.raw,
@@ -106,7 +109,7 @@ impl FileDesc {
 		filename: &CStr,
 		flags: OpenFlags,
 		mode: u32,
-	) -> Result<FileDesc, Error> {
+	) -> Result<FileDesc> {
 		unsafe {
 			l2::open(
 				filename.as_ptr(),
@@ -116,7 +119,7 @@ impl FileDesc {
 		}.map(|value| Self { raw: value as _ })
 	}
 
-	pub fn read(&self, buffer: &mut [u8]) -> Result<usize, Error> {
+	pub fn read(&self, buffer: &mut [u8]) -> Result<usize> {
 		unsafe {
 			l2::read(
 				self.raw,
@@ -126,7 +129,7 @@ impl FileDesc {
 		}.map(|value| value as usize)
 	}
 
-	pub fn write(&self, data: &[u8]) -> Result<usize, Error> {
+	pub fn write(&self, data: &[u8]) -> Result<usize> {
 		unsafe {
 			l2::write(
 				self.raw,
@@ -140,7 +143,7 @@ impl FileDesc {
 		family: AddressFamily,
 		semantic: ProtocolSemantic,
 		protocol: c_int,
-	) -> Result<Self, Error> {
+	) -> Result<Self> {
 		unsafe {
 			l2::socket(
 				family as _,
@@ -155,7 +158,7 @@ impl FileDesc {
 		level: c_int,
 		option: c_int,
 		value: &T,
-	) -> Result<c_int, Error> {
+	) -> Result<c_int> {
 		unsafe {
 			l2::set_socket_option(
 				self.raw,
@@ -167,7 +170,7 @@ impl FileDesc {
 		}.map(|value| value as c_int)
 	}
 
-	pub fn listen(&self, backlog: u32) -> Result<(), Error> {
+	pub fn listen(&self, backlog: u32) -> Result<()> {
 		unsafe {
 			l2::listen(
 				self.raw,
@@ -176,7 +179,7 @@ impl FileDesc {
 		}.map(|_| ())
 	}
 
-	pub fn bind<T>(&self, address: &T) -> Result<(), Error> {
+	pub fn bind<T>(&self, address: &T) -> Result<()> {
 		unsafe {
 			l2::bind(
 				self.raw,
@@ -186,11 +189,11 @@ impl FileDesc {
 		}.map(|_| ())
 	}
 
-	pub fn accept(
+	pub fn accept_simple(
 		&self,
 		non_block: bool,
 		close_on_exec: bool,
-	) -> Result<Self, Error> {
+	) -> Result<Self> {
 
 		let mut flags = 0;
 		
@@ -212,14 +215,14 @@ impl FileDesc {
 		}.map(|value| Self { raw: value as _ })
 	}
 
-	pub fn accept_with_address(
+	pub fn accept_with_address<T>(
 		&self,
 		non_block: bool,
 		close_on_exec: bool,
-	) -> Result<(Self, libc::sockaddr_storage), Error> {
+	) -> Result<(Self, T, libc::socklen_t)> {
 
-		let mut endpoint = core::mem::MaybeUninit::<libc::sockaddr_storage>::uninit();
-		let mut length = core::mem::size_of_val(&endpoint);
+		let mut endpoint = core::mem::MaybeUninit::<T>::uninit();
+		let mut length = core::mem::size_of_val(&endpoint) as libc::socklen_t;
 
 		let mut flags = 0;
 		
@@ -241,59 +244,13 @@ impl FileDesc {
 		}.map(|value|
 			(
 				Self { raw: value as _},
-				unsafe { endpoint.assume_init() }
+				unsafe { endpoint.assume_init() },
+				length,
 			)
 		)
 	}
 
-
-
-	pub fn accept_with_address_paranoid(
-		&self,
-		non_block: bool,
-		close_on_exec: bool,
-	) -> Result<(Self, Result<libc::sockaddr_storage, ()>), Error> {
-
-		let mut endpoint = core::mem::MaybeUninit::<libc::sockaddr_storage>::uninit();
-		let mut length = core::mem::size_of_val(&endpoint);
-
-		let mut flags = 0;
-		
-		if non_block {
-			flags |= libc::SOCK_NONBLOCK;
-		}
-
-		if close_on_exec {
-			flags |= libc::SOCK_CLOEXEC;
-		}
-
-		unsafe {
-			l2::accept4(
-				self.raw,
-				&mut endpoint as *mut _ as _,
-				&mut length as *mut _ as _,
-				flags,
-			).catch()
-		}.map(|value|
-			(
-				Self { raw: value as _},
-				if length < core::mem::size_of::<libc::sa_family_t>() {
-					Err(())
-				} else {
-					Ok(unsafe { endpoint.assume_init() })
-				},
-			)
-		)
-	}
-
-	pub fn close(self) -> Result<(), Error> {
-		unsafe {
-			l2::close(self.raw).catch()
-		}.map(|_| ())
-	}
-	
-
-	pub fn setup_socket_test(address: u128, port: u16, backlog: u32) -> Result<FileDesc, Error> {
+	pub fn setup_socket_test(address: u128, port: u16, backlog: u32) -> Result<FileDesc> {
 
 		let socket = FileDesc::socket(
 			AddressFamily::IPV6,
@@ -335,3 +292,76 @@ pub static STD_INPUT: FileDesc = FileDesc { raw: 0 };
 pub static STD_OUTPUT: FileDesc = FileDesc { raw: 1 };
 pub static STD_ERROR: FileDesc = FileDesc { raw: 2 };
 pub static CURRENT_WORKING_DIRECTORY: FileDesc = FileDesc { raw: -100 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pub struct Memory {
+	pointer: *mut c_void,
+	length: usize,
+}
+
+impl Memory {
+
+	pub fn new(
+		length: usize,
+		permits: MemoryPermits,
+	) -> Result<Self> {
+
+		let mut prot = 0;
+
+		if permits.read {
+			prot |= libc::PROT_READ;
+		}
+
+		if permits.write {
+			prot |= libc::PROT_WRITE;
+		}
+
+		if permits.exec {
+			prot |= libc::PROT_EXEC;
+		}
+
+		unsafe {
+			l2::mmap(
+				core::ptr::null_mut(),
+				length,
+				prot,
+				libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+				-1,
+				0
+			)
+		}.catch().map(|value| Self { pointer: value as _, length })
+	}
+
+}
+
+impl Drop for Memory {
+
+	fn drop(&mut self) {
+		unsafe {
+			l2::munmap(self.pointer, self.length)
+		};
+	}
+}
+
+
+pub struct MemoryPermits {
+	pub read: bool,
+	pub write: bool,
+	pub exec: bool,
+}
+

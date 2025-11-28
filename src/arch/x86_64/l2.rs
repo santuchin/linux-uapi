@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use std::os::fd;
 pub use std::os::fd::RawFd;
 
 use crate::l1::{
@@ -11,9 +12,10 @@ use crate::Sys;
 use crate::types;
 use crate::result::Result;
 
+use crate::l2_types::*;
+
 
 use libc::{
-
 	c_char, c_double, c_float, c_int, c_long, c_longlong, c_schar, c_short, c_uchar, c_uint, c_ulong, c_ulonglong, c_ushort, c_void, mode_t, size_t, socklen_t, ssize_t
 };
 
@@ -230,3 +232,99 @@ pub unsafe fn openat2(
 	).into()
 }
 
+/*
+asmlinkage long sys_io_uring_setup(u32 entries,
+				struct io_uring_params __user *p);
+asmlinkage long sys_io_uring_enter(unsigned int fd, u32 to_submit,
+				u32 min_complete, u32 flags,
+				const void __user *argp, size_t argsz);
+asmlinkage long sys_io_uring_register(unsigned int fd, unsigned int op,
+				void __user *arg, unsigned int nr_args);
+*/
+
+
+
+pub unsafe fn io_uring_setup(
+	entries: u32,
+	p: *mut io_uring_params,
+) -> Result {
+	unsafe {
+		syscall!(
+			Sys::IoUringSetup,
+			entries,
+			p,
+		)
+	}.into()
+}
+
+pub unsafe fn io_uring_enter(
+	fd: c_uint,
+	to_submit: u32,
+	min_complete: u32,
+	flags: u32,
+	argp: *const c_void,
+	argsz: size_t
+) -> Result {
+	unsafe {
+		syscall!(
+			Sys::IoUringEnter,
+			fd,
+			to_submit,
+			min_complete,
+			flags,
+			argp,
+			argsz,
+		)
+	}.into()
+}
+
+pub unsafe fn io_uring_register(
+	fd: c_uint,
+	op: c_uint,
+	arg: *mut c_void,
+	nr_args: c_uint,
+) -> Result {
+	unsafe {
+		syscall!(
+			Sys::IoUringRegister,
+			fd,
+			op,
+			arg,
+			nr_args,
+		)
+	}.into()
+}
+
+pub unsafe fn mmap(
+	addr: *mut c_void,
+	length: size_t,
+	prot: c_int,
+	flags: c_int,
+	fd: c_int,
+	offset: off_t,
+) -> Result {
+	unsafe {
+		syscall!(
+			Sys::MemoryMap,
+			addr,
+			length,
+			prot,
+			flags,
+			fd,
+			offset
+		)
+	}.into()
+}
+
+pub unsafe fn munmap(
+	addr: *mut c_void,
+	length: size_t,
+) -> Result {
+	unsafe {
+		syscall!(
+			Sys::MemoryUnmap,
+			addr,
+			length,
+		)
+	}.into()
+}

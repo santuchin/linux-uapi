@@ -27,28 +27,6 @@ fn main() {
 	fs::write(&out_dir.join("sys.csv"), gen_sys_rs(&syscalls)).unwrap();
 
 
-	generate_bindings();
-}
-
-fn generate_bindings() {
-
-    let header = "src/linux/include/linux/syscalls.h";
-
-	let outdir = env::var("OUT_DIR").unwrap();
-	let outdir = "src/";
-
-    let out_path = PathBuf::from(outdir);
-
-    let bindings = bindgen::Builder::default()
-        .header(header)
-		.clang_arg("-Isrc/linux/include")
-		.allowlist_function("sys_write")
-        .generate()
-		.unwrap();
-
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-		.unwrap()
 }
 
 
